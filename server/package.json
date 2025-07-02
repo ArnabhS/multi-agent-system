@@ -23,10 +23,13 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@langchain/core": "^0.3.61",
+    "@langchain/google-genai": "^0.2.14",
     "axios": "^1.10.0",
     "cors": "^2.8.5",
     "dotenv": "^17.0.1",
     "express": "^5.1.0",
+    "langchain": "^0.3.29",
     "mongoose": "^8.16.1",
     "tsx": "^4.20.3"
   }
