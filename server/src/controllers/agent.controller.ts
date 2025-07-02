@@ -15,6 +15,7 @@ try {
     }
 
     const result = await supportAgent.handleQuery(query);
+    console.log(result)
     res.json({ success: true, data: result, message: 'Support query processed' });
     return;
 } catch (error) {
@@ -93,7 +94,7 @@ export const createOrder=async(req:Request, res:Response):Promise<void> =>{
     }
     const query = `Create an order for ${serviceName} for client ${clientEmail}`;
     const result = await supportAgent.handleSpecificQueries(query);
-    
+    console.log(result)
     res.json({ success: true, data: result, message: 'Order creation processed' });
     return;
   } catch (error) {
