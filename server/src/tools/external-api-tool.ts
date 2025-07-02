@@ -169,7 +169,7 @@ export class ExternalAPITool extends Tool {
   private async simulateExternalCall(event: string, data: any): Promise<void> {
    
     const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
-    const webhookUrl = `${baseUrl}/api/internal/webhooks/${event}`;
+    const webhookUrl = `${baseUrl}/api/webhooks/${event}`;
     
     try {
       console.log(`Making external API call to: ${webhookUrl}`);

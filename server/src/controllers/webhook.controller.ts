@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
-import { Client } from '../models/client.model';
-import { Order } from '../models/order.model';
+
 
 export const clientCreated = async (req:Request, res:Response):Promise<void>=>{
     try {

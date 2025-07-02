@@ -2,7 +2,9 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors"
 import { connectDB } from "./config/db.js";
-
+import supportAgentRoutes from "./routes/supportAgent.routes.js"
+import dashboardAgentRoutes from "./routes/dashboardAgent.route.js"
+import webhookRoutes from "./routes/webhooks.routes.js"
 
 dotenv.config();
 const app = express();
@@ -23,6 +25,11 @@ app.use(
   ],
   })
   );
+
+app.use('/api/agents/support',supportAgentRoutes );
+app.use('/api/agents/dashboard',dashboardAgentRoutes );
+app.use('/api/webhooks',webhookRoutes );
+
 
 connectDB();
 
