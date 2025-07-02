@@ -8,7 +8,7 @@ const supportAgent = new SupportAgent();
 export const supportAgentQueries = async (req:Request, res:Response):Promise<void> =>{
 try {
     const { query } = req.body;
-    
+    console.log(query)
     if (!query) {
         res.status(400).json({ error: 'Query is required' });
         return;
@@ -28,13 +28,14 @@ try {
 export const dashboardAgentQueries = async (req:Request, res:Response):Promise<void> =>{
 try {
     const { query } = req.body;
-    
+    console.log(query);
     if (!query) {
         res.status(400).json({ error: 'Query is required' });
         return;
     }
-
+    
     const result = await dashboardAgent.handleQuery(query);
+    console.log(result)
     res.json({ success: true, data: result, message: 'Dashboard query processed' });
     return;
 } catch (error) {

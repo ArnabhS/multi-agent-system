@@ -127,10 +127,35 @@ export class MongoDBAnalyticsTool extends Tool {
 
       switch (type) {
         case 'revenue':
+          // Use paymentDate instead of createdAt for payment filtering
+          let paymentDateFilter = {};
+          if (period) {
+            const periodDate = new Date();
+            switch (period) {
+              case 'today':
+                periodDate.setHours(0, 0, 0, 0);
+                paymentDateFilter = { paymentDate: { $gte: periodDate } };
+                break;
+              case 'week':
+                periodDate.setDate(now.getDate() - 7);
+                paymentDateFilter = { paymentDate: { $gte: periodDate } };
+                break;
+              case 'month':
+                periodDate.setMonth(now.getMonth() - 1);
+                paymentDateFilter = { paymentDate: { $gte: periodDate } };
+                break;
+              case 'year':
+                periodDate.setFullYear(now.getFullYear() - 1);
+                paymentDateFilter = { paymentDate: { $gte: periodDate } };
+                break;
+            }
+          }
+          
           result = await Payment.aggregate([
-            { $match: { status: 'completed', ...dateFilter } },
+            { $match: { status: 'completed', ...paymentDateFilter } },
             { $group: { _id: null, totalRevenue: { $sum: '$amount' }, count: { $sum: 1 } } }
           ]);
+          console.log("Result :", result)
           break;
 
         case 'outstanding_payments':
@@ -138,6 +163,7 @@ export class MongoDBAnalyticsTool extends Tool {
             { $match: { status: 'pending', ...filters } },
             { $group: { _id: null, totalOutstanding: { $sum: '$amount' }, count: { $sum: 1 } } }
           ]);
+          console.log("Order results:", result)
           break;
 
         case 'client_insights':

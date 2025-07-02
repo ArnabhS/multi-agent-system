@@ -28,13 +28,15 @@ export class SupportAgent {
           content: `Analyze this customer support query (it may be in any language - English, Hindi, Bengali, etc.) and extract key information: "${query}"
 
           Return JSON with:
-          - intent: one of [search_client, order_status, create_order, weekly_classes, payment_info, unknown]
+          - intent: one of [search_client, order_status, create_order, create_client, weekly_classes, payment_info, unknown]
           - extracted_data: object with relevant extracted information
           - translated_query: English translation of the query
 
           Examples:
           - "Find client john@example.com" -> {"intent": "search_client", "extracted_data": {"email": "john@example.com"}, "translated_query": "Find client john@example.com"}
           - "ग्राहक john@example.com खोजें" -> {"intent": "search_client", "extracted_data": {"email": "john@example.com"}, "translated_query": "Find client john@example.com"}
+          - "Create client John Smith with email john@smith.com" -> {"intent": "create_client", "extracted_data": {"name": "John Smith", "email": "john@smith.com"}, "translated_query": "Create client John Smith with email john@smith.com"}
+          - "নতুন ক্লায়েন্ট তৈরি করুন" -> {"intent": "create_client", "translated_query": "Create new client"}
           - "অর্ডার #123 এর অবস্থা কী?" -> {"intent": "order_status", "extracted_data": {"orderId": "123"}, "translated_query": "What is the status of order #123?"}
           - "योग कोर्स के लिए ऑर्डर बनाएं" -> {"intent": "create_order", "extracted_data": {"service": "Yoga Course"}, "translated_query": "Create order for Yoga Course"}`
         }
@@ -48,6 +50,7 @@ export class SupportAgent {
           : JSON.stringify(intentResponse.content);
         const jsonMatch = content.match(/\{.*\}/s);
         intentData = jsonMatch ? JSON.parse(jsonMatch[0]) : { intent: 'unknown' };
+        console.log(intentData)
       } catch {
         intentData = { intent: 'unknown' };
       }
@@ -72,6 +75,8 @@ export class SupportAgent {
           return await this.getOrderStatus(extracted_data?.orderId || '');
         case 'create_order':
           return await this.createOrder(originalQuery);
+        case 'create_client':
+          return await this.createClient(originalQuery);
         case 'weekly_classes':
           return await this.getWeeklyClasses();
         case 'payment_info':
@@ -92,6 +97,11 @@ export class SupportAgent {
       if (this.matchesCreateOrder(lowerQuery)) {
         console.log("reaching create order")
         return this.createOrder(query);
+      }
+
+      // Create client - multilingual support
+      if (this.matchesCreateClient(lowerQuery)) {
+        return this.createClient(query);
       }
 
       // Client search - multilingual support
@@ -120,7 +130,7 @@ export class SupportAgent {
         return this.getPaymentInfo(query);
       }
 
-      return 'I can help you with client searches, order status, class schedules, payments, and creating new orders. Please be more specific.';
+      return 'I can help you with client searches, creating clients, order status, class schedules, payments, and creating new orders. Please be more specific.';
     } catch (error) {
       return `Error: ${error instanceof Error ? error.message : String(error)}`;
     }
@@ -143,13 +153,22 @@ export class SupportAgent {
   }
 
   private matchesWeeklyClasses(query: string): boolean {
-    const patterns = ['classes', 'week', 'कक्षा', 'सप्ताह', 'ক্লাস', 'সপ্তাহ'];
+    const patterns = ['classes', 'week', 'कक्षा', 'सপ্তাহ', 'ক্লাস', 'সপ্তাহ'];
     return patterns.some(pattern => query.includes(pattern));
   }
 
   private matchesPaymentInfo(query: string): boolean {
     const patterns = ['paid', 'payment', 'भुगतान', 'পেমেন্ট'];
     return patterns.some(pattern => query.includes(pattern));
+  }
+
+  private matchesCreateClient(query: string): boolean {
+    const patterns = ['create', 'register', 'add', 'new', 'client', 'customer', 'ग्राहक', 'बनाएं', 'रजिस्टर', 'গ্রাহক', 'তৈরি', 'নিবন্ধন'];
+    const createPatterns = ['create', 'register', 'add', 'new', 'बनाएं', 'रजिस्टर', 'তৈরি', 'নিবন্ধন'];
+    const clientPatterns = ['client', 'customer', 'ग्राहक', 'গ্রাহক'];
+    
+    return createPatterns.some(create => query.includes(create)) && 
+           clientPatterns.some(client => query.includes(client));
   }
 
   private async searchClients(query: string): Promise<string> {
@@ -178,7 +197,16 @@ export class SupportAgent {
     });
 
     const result = await this.mongoTool._call(mongoQuery);
-    return `Client search completed: ${result}`;
+    
+    try {
+      const parsedResult = JSON.parse(result);
+      if (!parsedResult || (Array.isArray(parsedResult) && parsedResult.length === 0)) {
+        return "No clients found matching your search criteria.";
+      }
+      return `Client search completed: ${result}`;
+    } catch (error) {
+      return `Client search completed: ${result}`;
+    }
   }
 
   private async getOrderStatus(orderId: string): Promise<string> {
@@ -228,7 +256,16 @@ export class SupportAgent {
     });
 
     const result = await this.mongoTool._call(classQuery);
-    return `Weekly classes: ${result}`;
+    
+    try {
+      const parsedResult = JSON.parse(result);
+      if (!parsedResult || (Array.isArray(parsedResult) && parsedResult.length === 0)) {
+        return "No classes found for this week.";
+      }
+      return `Weekly classes: ${result}`;
+    } catch (error) {
+      return `Weekly classes: ${result}`;
+    }
   }
 
   private async getPaymentInfo(query: string): Promise<string> {
@@ -244,7 +281,16 @@ export class SupportAgent {
       });
 
       const result = await this.mongoTool._call(pendingQuery);
-      return `Pending payments: ${result}`;
+      
+      try {
+        const parsedResult = JSON.parse(result);
+        if (!parsedResult || (Array.isArray(parsedResult) && parsedResult.length === 0)) {
+          return "No pending payments found.";
+        }
+        return `Pending payments: ${result}`;
+      } catch (error) {
+        return `Pending payments: ${result}`;
+      }
     }
 
     return this.getOrderStatus(orderMatch[1]);
@@ -276,5 +322,61 @@ export class SupportAgent {
     console.log("reaching here...")
     const result = await this.externalTool._call(JSON.stringify(orderData));
     return `Order creation result: ${result}`;
+  }
+
+  private async createClient(query: string): Promise<string> {
+    // Enhanced extraction for multilingual queries
+    const nameMatch = query.match(/client\s+([^w]+?)\s+with/i) ||
+                     query.match(/create\s+([^w]+?)\s+with/i) ||
+                     query.match(/ग्राहक\s+([^क]+?)(?:\s|$)/i) ||
+                     query.match(/গ্রাহক\s+([^গ]+?)(?:\s|$)/i) ||
+                     query.match(/name\s+([^e]+?)(?:\s+email|\s+with|\s|$)/i);
+    
+    const emailMatch = query.match(/email\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i) ||
+                      query.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+    
+    const phoneMatch = query.match(/phone\s+(\+?[\d\s-()]{10,})/i) ||
+                      query.match(/(\+?[\d\s-()]{10,})/);
+
+    if (!nameMatch && !emailMatch) {
+      return "Please specify: 'Create client [Name] with email [email@example.com]' or provide at least name and email.";
+    }
+
+    // Validate email format
+    const email = emailMatch ? emailMatch[1] || emailMatch[0] : undefined;
+    if (!email) {
+      return "Email is required to create a client. Please provide: 'Create client [Name] with email [email@example.com]'";
+    }
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+      return "Invalid email format. Please provide a valid email address.";
+    }
+
+    // Validate phone format if provided
+    let phone = phoneMatch ? phoneMatch[1] || phoneMatch[0] : undefined;
+    if (phone) {
+      // Clean phone number (remove spaces, dashes, parentheses)
+      const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+      
+      // Validate phone number format (must be 10-15 digits, optionally starting with +)
+      const phoneRegex = /^\+?[\d]{10,15}$/;
+      if (!phoneRegex.test(cleanPhone)) {
+        return "Invalid phone format. Please provide a valid phone number (10-15 digits, optionally starting with +).";
+      }
+      phone = cleanPhone;
+    }
+
+    const clientData = {
+      action: 'create_client',
+      data: {
+        name: nameMatch ? nameMatch[1].trim() : 'Unknown',
+        email: email,
+        phone: phone
+      }
+    };
+
+    const result = await this.externalTool._call(JSON.stringify(clientData));
+    return `Client creation result: ${result}`;
   }
 }
