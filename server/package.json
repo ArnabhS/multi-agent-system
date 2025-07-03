@@ -6,9 +6,7 @@
   "scripts": {
     "dev": "tsx watch -r dotenv/config src/app.ts",
     "build": "tsc",
-    "start": "node -r dotenv/config ./dist/app.js",
-    "demo:agents": "tsx -r dotenv/config src/agents/agent-demo.ts",
-    "demo:multilingual": "tsx -r dotenv/config src/agents/multilingual-demo.ts"
+    "start": "node -r dotenv/config ./dist/app.js"
   },
   "keywords": [],
   "author": "",

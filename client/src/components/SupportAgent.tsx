@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 
 interface Message {
@@ -15,14 +15,14 @@ const SupportAgent: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: 'Hello! I\'m your enhanced Support Agent with memory and multilingual capabilities. I can help you with:\n• Client searches\n• Creating new clients\n• Order status checks\n• Creating new orders\n• Class schedules\n• Payment information\n\nI remember our conversation context and can understand queries in multiple languages. Try asking me something like "Create client John Smith with email john@example.com"',
+      text: 'Hello! I\'m your enhanced Support Agent with automatic memory and multilingual capabilities. I can help you with:\n• Client searches\n• Creating new clients\n• Order status checks\n• Creating new orders\n• Class schedules\n• Payment information\n\nI automatically remember our conversation context and can understand queries in multiple languages. Try asking me something like "Create client John Smith with email john@example.com"',
       sender: 'agent',
       timestamp: new Date(),
     },
   ]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string>(`session_${Date.now()}`);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   // Auto-scroll to bottom when new messages are added
   const scrollToBottom = () => {
@@ -61,7 +61,7 @@ const SupportAgent: React.FC = () => {
     try {
       const response = await axios.post(`${BASE_URL}/api/agents/support/query`, {
         query: inputText,
-        sessionId: sessionId,
+        sessionId: sessionId, // Can be null for first request
       });
 
       const agentMessage: Message = {
@@ -73,7 +73,7 @@ const SupportAgent: React.FC = () => {
 
       setMessages(prev => [...prev, agentMessage]);
       
-      // Update sessionId if server provides a new one
+      // Update sessionId with the one provided by backend
       if (response.data.sessionId) {
         setSessionId(response.data.sessionId);
       }
@@ -95,8 +95,43 @@ const SupportAgent: React.FC = () => {
     setInputText(query);
   };
 
+  const handleClearSession = async () => {
+    if (sessionId) {
+      try {
+        await axios.delete(`${BASE_URL}/api/agents/support/memory/sessions/${sessionId}`);
+        setSessionId(null);
+        setMessages([
+          {
+            id: '1',
+            text: 'Session cleared! I\'m ready to help you with a fresh start.',
+            sender: 'agent',
+            timestamp: new Date(),
+          }
+        ]);
+      } catch (error) {
+        console.error('Error clearing session:', error);
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col h-[600px]">
+      {/* Header with session info and clear button */}
+      <div className="flex justify-between items-center mb-4 p-2 bg-gray-100 rounded-lg">
+        <div className="text-sm text-gray-600">
+          Session: {sessionId ? sessionId.substring(0, 20) + '...' : 'New session will be created'}
+        </div>
+        {sessionId && (
+          <button
+            onClick={handleClearSession}
+            className="flex items-center gap-1 px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            <RefreshCw size={14} />
+            Clear Session
+          </button>
+        )}
+      </div>
+      
       <div className="flex-1 overflow-y-auto mb-4 border rounded-lg p-4 bg-gray-50">
         {messages.map((message) => (
           <div

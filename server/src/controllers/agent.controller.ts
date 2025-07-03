@@ -1,22 +1,28 @@
 import { Request, Response }  from 'express';
 import { DashboardAgent } from '../agents/dashboard-agent.js';
 import { SupportAgent } from '../agents/support-agent.js';
+import { memoryService } from '../services/memory-service.js';
 
 const dashboardAgent = new DashboardAgent();
 const supportAgent = new SupportAgent();
 
 export const supportAgentQueries = async (req:Request, res:Response):Promise<void> =>{
 try {
-    const { query } = req.body;
+    const { query, sessionId } = req.body;
     console.log(query)
     if (!query) {
         res.status(400).json({ error: 'Query is required' });
         return;
     }
 
-    const result = await supportAgent.handleQuery(query);
-    console.log(result)
-    res.json({ success: true, data: result, message: 'Support query processed' });
+    const result = await supportAgent.handleQuery(query, sessionId);
+    console.log(result.response)
+    res.json({ 
+      success: true, 
+      data: result.response, 
+      sessionId: result.sessionId,
+      message: 'Support query processed' 
+    });
     return;
 } catch (error) {
     console.error('Support query error:', error);
@@ -27,16 +33,21 @@ try {
 
 export const dashboardAgentQueries = async (req:Request, res:Response):Promise<void> =>{
 try {
-    const { query } = req.body;
+    const { query, sessionId } = req.body;
     console.log(query);
     if (!query) {
         res.status(400).json({ error: 'Query is required' });
         return;
     }
     
-    const result = await dashboardAgent.handleQuery(query);
-    console.log(result)
-    res.json({ success: true, data: result, message: 'Dashboard query processed' });
+    const result = await dashboardAgent.handleQuery(query, sessionId);
+    console.log(result.response)
+    res.json({ 
+      success: true, 
+      data: result.response, 
+      sessionId: result.sessionId,
+      message: 'Dashboard query processed' 
+    });
     return;
 } catch (error) {
     console.error('Dashboard query error:', error);
@@ -216,4 +227,96 @@ try {
     return
   }
 }
+
+
+export const getSessionContext = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      res.status(400).json({ error: 'Session ID is required' });
+      return;
+    }
+
+    const context = memoryService.getContext(sessionId);
+    const stats = memoryService.getSessionStats(sessionId);
+    const recentInteractions = memoryService.getRecentInteractions(sessionId, 10);
+
+    res.json({ 
+      success: true, 
+      data: { 
+        context, 
+        stats, 
+        recentInteractions 
+      }, 
+      message: 'Session context retrieved' 
+    });
+    return;
+  } catch (error) {
+    console.error('Get session context error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+};
+
+export const clearSessionMemory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      res.status(400).json({ error: 'Session ID is required' });
+      return;
+    }
+
+    const cleared = memoryService.clearSession(sessionId);
+    
+    if (cleared) {
+      res.json({ success: true, message: 'Session memory cleared' });
+    } else {
+      res.status(404).json({ error: 'Session not found' });
+    }
+    return;
+  } catch (error) {
+    console.error('Clear session memory error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+};
+
+export const getActiveSessions = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const sessions = memoryService.getActiveSessions();
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        sessionCount: sessions.length,
+        sessions 
+      }, 
+      message: 'Active sessions retrieved' 
+    });
+    return;
+  } catch (error) {
+    console.error('Get active sessions error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+};
+
+export const createNewSession = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const newSessionId = memoryService.createNewSession();
+    
+    res.json({ 
+      success: true, 
+      data: { sessionId: newSessionId }, 
+      message: 'New session created' 
+    });
+    return;
+  } catch (error) {
+    console.error('Create new session error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+};
 

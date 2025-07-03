@@ -1,5 +1,6 @@
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { MongoDBTool, MongoDBAnalyticsTool } from '../tools/mongodb-tool.js';
+import { memoryService } from '../services/memory-service.js';
 
 export class DashboardAgent {
   private mongoTool: MongoDBTool;
@@ -10,7 +11,7 @@ export class DashboardAgent {
     this.mongoTool = new MongoDBTool();
     this.analyticsTool = new MongoDBAnalyticsTool();
     
-    // Initialize Google Gemini AI for multilingual understanding
+   
     this.llm = new ChatGoogleGenerativeAI({
       model: "gemini-2.5-flash",
       temperature: 0.1,
@@ -18,9 +19,9 @@ export class DashboardAgent {
     });
   }
 
-  async handleQuery(query: string): Promise<string> {
+  async handleQuery(query: string, sessionId?: string): Promise<{ response: string, sessionId: string }> {
     try {
-      // Use LLM to understand multilingual queries and translate intent to English
+      
       const intentResponse = await this.llm.invoke([
         {
           role: "user",
@@ -42,7 +43,7 @@ export class DashboardAgent {
           - "मासिक राजस्व दिखाएं" -> {"intent": "revenue", "period": "month", "translated_query": "Show me monthly revenue"}
           - "শীর্ষ কোর্স" -> {"intent": "enrollment", "translated_query": "Top courses"}
           - "बकाया भुगतान" -> {"intent": "outstanding_payments", "translated_query": "Outstanding payments"}
-          - "उपस্থিति रिপोर्ট" -> {"intent": "attendance", "translated_query": "attendance report"}
+          - "उपस्थिति रिपोर्ट" -> {"intent": "attendance", "translated_query": "attendance report"}
           - "ড্যাশবোর্ড" -> {"intent": "dashboard", "translated_query": "dashboard"}`
         }
       ]);
@@ -60,11 +61,33 @@ export class DashboardAgent {
         intentData = { intent: 'unknown' };
       }
 
-      return await this.routeByIntent(intentData, query);
+      const response = await this.routeByIntent(intentData, query);
+      
+      
+      const activeSessionId = memoryService.storeInteraction(
+        sessionId,
+        'dashboard',
+        query,
+        response,
+        { period: intentData.period },
+        intentData.intent
+      );
+      
+      return { response, sessionId: activeSessionId };
     } catch (error) {
       console.error('Dashboard Agent Error:', error);
-      // Fallback to simple pattern matching if LLM fails
-      return await this.handleSpecificQueries(query);
+      
+      const response = await this.handleSpecificQueries(query);
+      
+      
+      const activeSessionId = memoryService.storeInteraction(
+        sessionId,
+        'dashboard',
+        query,
+        response
+      );
+      
+      return { response, sessionId: activeSessionId };
     }
   }
 
@@ -85,7 +108,6 @@ export class DashboardAgent {
       case 'dashboard':
         return this.generateDashboardSummary();
       default:
-        // Fallback to pattern matching for unknown intents
         return this.handleSpecificQueries(originalQuery);
     }
   }
@@ -99,27 +121,27 @@ export class DashboardAgent {
         return this.getMonthlyRevenue();
       }
 
-      // Outstanding payments queries  
+        
       if (this.matchesOutstandingPayments(lowerQuery)) {
         return this.getOutstandingPayments();
       }
 
-      // Enrollment queries
+      
       if (this.matchesEnrollment(lowerQuery)) {
         return this.getTopEnrollments();
       }
 
-      // Attendance queries
+     
       if (this.matchesAttendance(lowerQuery)) {
         return this.getAttendanceStats();
       }
 
-      // Client queries
+      
       if (this.matchesClients(lowerQuery)) {
         return this.getInactiveClients();
       }
 
-      // Dashboard queries
+      
       if (this.matchesDashboard(lowerQuery)) {
         return this.generateDashboardSummary();
       }
@@ -130,7 +152,7 @@ export class DashboardAgent {
     }
   }
 
-  // Multilingual pattern matching methods
+  
   private matchesRevenue(query: string): boolean {
     const patterns = ['revenue', 'income', 'earnings', 'money', 'sales', 'राजस्व', 'आय', 'কমাই', 'রাজস্ব', 'আয়'];
     return patterns.some(pattern => query.includes(pattern));
@@ -274,5 +296,39 @@ export class DashboardAgent {
     } catch (error) {
       return `Error generating dashboard: ${error instanceof Error ? error.message : String(error)}`;
     }
+  }
+
+  private buildEnhancedPrompt(query: string, context: string): string {
+    const basePrompt = `Analyze this business analytics query (it may be in any language - English, Hindi, Bengali, etc.) and classify the intent: "${query}"
+
+          Return JSON with:
+          - intent: one of [revenue, outstanding_payments, enrollment, attendance, clients, dashboard, unknown]
+          - period: if mentioned (today, week, month, year)
+          - translated_query: English translation of the query
+
+          Examples:
+          - "Show me monthly revenue" -> {"intent": "revenue", "period": "month", "translated_query": "Show me monthly revenue"}
+          - "What are the top performing services?" -> {"intent": "enrollment", "translated_query": "What are the top performing services?"}
+          - "Top courses" -> {"intent": "enrollment", "translated_query": "Top courses"}
+          - "Most popular classes" -> {"intent": "enrollment", "translated_query": "Most popular classes"}
+          - "Service analytics" -> {"intent": "enrollment", "translated_query": "Service analytics"}
+          - "Outstanding payments" -> {"intent": "outstanding_payments", "translated_query": "Outstanding payments"}
+          - "Pending orders" -> {"intent": "outstanding_payments", "translated_query": "Pending orders"}
+          - "मासिक राजस्व दिखाएं" -> {"intent": "revenue", "period": "month", "translated_query": "Show me monthly revenue"}
+          - "শীর্ষ কোর্স" -> {"intent": "enrollment", "translated_query": "Top courses"}
+          - "बकाया भुगतान" -> {"intent": "outstanding_payments", "translated_query": "Outstanding payments"}
+          - "उपस्थिति रिपोर्ट" -> {"intent": "attendance", "translated_query": "attendance report"}
+          - "ড্যাশবোর্ড" -> {"intent": "dashboard", "translated_query": "dashboard"}`;
+
+    if (context) {
+      return `${basePrompt}
+
+          CONVERSATION CONTEXT:
+          ${context}
+          
+          Use this context to provide more relevant analytics. If previous queries asked about specific periods or metrics, consider that context.`;
+    }
+
+    return basePrompt;
   }
 }

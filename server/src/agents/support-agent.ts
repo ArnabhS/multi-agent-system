@@ -1,6 +1,7 @@
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { MongoDBTool } from '../tools/mongodb-tool.js';
 import { ExternalAPITool } from '../tools/external-api-tool.js';
+import { memoryService } from '../services/memory-service.js';
 
 export class SupportAgent {
   private mongoTool: MongoDBTool;
@@ -11,7 +12,7 @@ export class SupportAgent {
     this.mongoTool = new MongoDBTool();
     this.externalTool = new ExternalAPITool();
     
-    // Initialize Google Gemini AI for multilingual understanding
+    
     this.llm = new ChatGoogleGenerativeAI({
       model: "gemini-2.5-flash",
       temperature: 0.1,
@@ -19,13 +20,71 @@ export class SupportAgent {
     });
   }
 
-  async handleQuery(query: string): Promise<string> {
+  async handleQuery(query: string, sessionId?: string): Promise<{ response: string, sessionId: string }> {
     try {
-      // Use LLM to understand multilingual queries and extract information
+      
+      const context = memoryService.getContext(sessionId);
+      
+      
+      const resolvedQuery = memoryService.resolveContext(sessionId, query);
+      
+      
+      const enhancedPrompt = this.buildEnhancedPrompt(resolvedQuery, context);
+      
+     
       const intentResponse = await this.llm.invoke([
         {
           role: "user",
-          content: `Analyze this customer support query (it may be in any language - English, Hindi, Bengali, etc.) and extract key information: "${query}"
+          content: enhancedPrompt
+        }
+      ]);
+
+      let intentData;
+      try {
+       
+        const content = typeof intentResponse.content === 'string' 
+          ? intentResponse.content 
+          : JSON.stringify(intentResponse.content);
+        const jsonMatch = content.match(/\{.*\}/s);
+        intentData = jsonMatch ? JSON.parse(jsonMatch[0]) : { intent: 'unknown' };
+        console.log(intentData)
+      } catch {
+        intentData = { intent: 'unknown' };
+      }
+
+     
+      const response = await this.routeByIntent(intentData, resolvedQuery);
+      
+      
+      const activeSessionId = memoryService.storeInteraction(
+        sessionId,
+        'support',
+        query,
+        response,
+        intentData.extracted_data,
+        intentData.intent
+      );
+      
+      return { response, sessionId: activeSessionId };
+    } catch (error) {
+      console.error('Support Agent Error:', error);
+     
+      const response = await this.handleSpecificQueries(query);
+      
+      
+      const activeSessionId = memoryService.storeInteraction(
+        sessionId,
+        'support',
+        query,
+        response
+      );
+      
+      return { response, sessionId: activeSessionId };
+    }
+  }
+
+  private buildEnhancedPrompt(query: string, context: string): string {
+    const basePrompt = `Analyze this customer support query (it may be in any language - English, Hindi, Bengali, etc.) and extract key information: "${query}"
 
           Return JSON with:
           - intent: one of [search_client, order_status, create_order, create_client, weekly_classes, payment_info, unknown]
@@ -38,30 +97,18 @@ export class SupportAgent {
           - "Create client John Smith with email john@smith.com" -> {"intent": "create_client", "extracted_data": {"name": "John Smith", "email": "john@smith.com"}, "translated_query": "Create client John Smith with email john@smith.com"}
           - "নতুন ক্লায়েন্ট তৈরি করুন" -> {"intent": "create_client", "translated_query": "Create new client"}
           - "অর্ডার #123 এর অবস্থা কী?" -> {"intent": "order_status", "extracted_data": {"orderId": "123"}, "translated_query": "What is the status of order #123?"}
-          - "योग कोर्स के लिए ऑर्डर बनाएं" -> {"intent": "create_order", "extracted_data": {"service": "Yoga Course"}, "translated_query": "Create order for Yoga Course"}`
-        }
-      ]);
+          - "योग कोर्स के लिए ऑर्डर बनाएं" -> {"intent": "create_order", "extracted_data": {"service": "Yoga Course"}, "translated_query": "Create order for Yoga Course"}`;
 
-      let intentData;
-      try {
-        // Extract JSON from response content
-        const content = typeof intentResponse.content === 'string' 
-          ? intentResponse.content 
-          : JSON.stringify(intentResponse.content);
-        const jsonMatch = content.match(/\{.*\}/s);
-        intentData = jsonMatch ? JSON.parse(jsonMatch[0]) : { intent: 'unknown' };
-        console.log(intentData)
-      } catch {
-        intentData = { intent: 'unknown' };
-      }
+    if (context) {
+      return `${basePrompt}
 
-      // Route to appropriate handler based on intent
-      return await this.routeByIntent(intentData, query);
-    } catch (error) {
-      console.error('Support Agent Error:', error);
-      // Fallback to simple pattern matching if LLM fails
-      return await this.handleSpecificQueries(query);
+          CONVERSATION CONTEXT:
+          ${context}
+          
+          Use this context to better understand references in the query. If the query mentions "that client", "the order", "same service", etc., use the context to resolve these references.`;
     }
+
+    return basePrompt;
   }
 
   private async routeByIntent(intentData: any, originalQuery: string): Promise<string> {
@@ -93,23 +140,23 @@ export class SupportAgent {
     const lowerQuery = query.toLowerCase();
     
     try {
-      // Create order - multilingual support
+     
       if (this.matchesCreateOrder(lowerQuery)) {
         console.log("reaching create order")
         return this.createOrder(query);
       }
 
-      // Create client - multilingual support
+     
       if (this.matchesCreateClient(lowerQuery)) {
         return this.createClient(query);
       }
 
-      // Client search - multilingual support
+     
       if (this.matchesClientSearch(lowerQuery)) {
         return this.searchClients(query);
       }
 
-      // Order status - multilingual support
+      
       if (this.matchesOrderStatus(lowerQuery)) {
         console.log("here 2")
         const orderMatch = query.match(/order\s*#?(\w+)/i) || query.match(/ऑर्डर\s*#?(\w+)/i) || query.match(/অর্ডার\s*#?(\w+)/i);
@@ -119,13 +166,13 @@ export class SupportAgent {
         }
       }
 
-      // Weekly classes - multilingual support
+      
       if (this.matchesWeeklyClasses(lowerQuery)) {
         console.log("here 3")
         return this.getWeeklyClasses();
       }
 
-      // Payment info - multilingual support
+      
       if (this.matchesPaymentInfo(lowerQuery)) {
         return this.getPaymentInfo(query);
       }
@@ -136,7 +183,7 @@ export class SupportAgent {
     }
   }
 
-  // Multilingual pattern matching methods
+  
   private matchesCreateOrder(query: string): boolean {
     const patterns = ['create', 'order', 'बनाएं', 'ऑर्डर', 'তৈরি', 'অর্ডার'];
     return patterns.filter(pattern => query.includes(pattern)).length >= 2;
@@ -172,7 +219,7 @@ export class SupportAgent {
   }
 
   private async searchClients(query: string): Promise<string> {
-    // Enhanced pattern matching for multilingual queries
+    
     const emailMatch = query.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
     const phoneMatch = query.match(/(\+?[\d\s-()]{10,})/);
     const nameMatch = query.match(/name\s+([^@\n]+?)(?:\s|$)/i) || 
@@ -223,7 +270,7 @@ export class SupportAgent {
       return `Order ${orderId} not found`;
     }
 
-    // Get payment info
+    
     const paymentQuery = JSON.stringify({
       collection: 'payments',
       operation: 'findOne',
@@ -272,7 +319,7 @@ export class SupportAgent {
     const orderMatch = query.match(/order\s*#?(\w+)/i);
     
     if (!orderMatch) {
-      // Get pending payments
+     
       const pendingQuery = JSON.stringify({
         collection: 'orders',
         operation: 'find',
@@ -297,7 +344,7 @@ export class SupportAgent {
   }
 
   private async createOrder(query: string): Promise<string> {
-    // Enhanced extraction for multilingual queries
+    
     const serviceMatch = query.match(/for\s+([^f]+?)\s+for\s+client/i) ||
                         query.match(/के लिए\s+([^क]+?)\s+के लिए\s+ग्राहक/i) ||
                         query.match(/জন্য\s+([^গ]+?)\s+জন্য\s+গ্রাহক/i);
@@ -325,7 +372,7 @@ export class SupportAgent {
   }
 
   private async createClient(query: string): Promise<string> {
-    // Enhanced extraction for multilingual queries
+    
     const nameMatch = query.match(/client\s+([^w]+?)\s+with/i) ||
                      query.match(/create\s+([^w]+?)\s+with/i) ||
                      query.match(/ग्राहक\s+([^क]+?)(?:\s|$)/i) ||
@@ -353,13 +400,13 @@ export class SupportAgent {
       return "Invalid email format. Please provide a valid email address.";
     }
 
-    // Validate phone format if provided
+    
     let phone = phoneMatch ? phoneMatch[1] || phoneMatch[0] : undefined;
     if (phone) {
-      // Clean phone number (remove spaces, dashes, parentheses)
+      
       const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
       
-      // Validate phone number format (must be 10-15 digits, optionally starting with +)
+     
       const phoneRegex = /^\+?[\d]{10,15}$/;
       if (!phoneRegex.test(cleanPhone)) {
         return "Invalid phone format. Please provide a valid phone number (10-15 digits, optionally starting with +).";
