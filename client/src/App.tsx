@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageSquare, BarChart3 } from 'lucide-react';
+import { MessageSquare, BarChart3, Info } from 'lucide-react';
 import SupportAgent from './components/SupportAgent';
 import DashboardAgent from './components/DashboardAgent';
 
@@ -44,6 +44,20 @@ function App() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+       
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <Info className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm text-blue-800">
+                <strong>Service Notice:</strong> The backend is deployed on Render's free tier. 
+                The first request may take 30-60 seconds to respond as the service "wakes up" from sleep mode. 
+                Subsequent requests will be much faster.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white rounded-lg shadow">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex">
